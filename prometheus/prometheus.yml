@@ -1,0 +1,35 @@
+# =====================================================================
+# Configuración de Prometheus - Práctica 1.1
+# Ruta no host:      ./prometheus/prometheus.yml
+# Ruta no contedor:  /etc/prometheus/prometheus.yml (só lectura)
+# =====================================================================
+
+global:
+  scrape_interval: 15s       # cada canto se piden métricas aos destinos
+  evaluation_interval: 15s   # cada canto se avalían regras (usarémolo na práctica 1.3)
+  scrape_timeout: 10s
+  external_labels:
+    entorno: "app-mantenimiento"
+
+scrape_configs:
+  # 1) Prometheus monitorízase a si mesmo
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          capa: "monitorizacion"
+
+  # 2) cAdvisor: métricas de cada contedor (app_webserver, app_database...)
+  - job_name: "cadvisor"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["cadvisor:8080"]   # nome do servizo no docker-compose (DNS interno)
+        labels:
+          capa: "contedores"
+
+  # 3) Node Exporter: métricas da máquina virtual (host)
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          capa: "host"

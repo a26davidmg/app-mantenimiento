@@ -1,4 +1,8 @@
 services:
+  # =====================================================================
+  # INFRAESTRUTURA BASE (Práctica 0.2) - sen cambios
+  # =====================================================================
+
   # Servidor Web Proxy
   webserver:
     image: nginx:alpine
@@ -31,9 +35,78 @@ services:
     networks:
       - app-net
 
+  # =====================================================================
+  # PILA DE MÉTRICAS (UD1 - Práctica 1.1)
+  # Prefixo "mon_" nos nomes de contedor para identificar a capa de
+  # monitorización (útil para filtrar e para o teardown da UD2).
+  # =====================================================================
+
+  # Motor de recollida e almacenamento de series temporais
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    container_name: mon_prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
+    ports:
+      # Só se publica en localhost: a interface web NON queda exposta á rede
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - monitor-net
+    depends_on:
+      - cadvisor
+      - node-exporter
+
+  # Exportador de métricas por contedor (CPU, RAM, rede, E/S de cada contedor)
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.3
+    container_name: mon_cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    command:
+      - "--docker_only=true"          # só contedores Docker, non todos os cgroups do sistema
+      - "--housekeeping_interval=10s" # frecuencia de recollida interna
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"        # accesible SÓ dende a rede monitor-net (sen "ports")
+    networks:
+      - monitor-net
+
+  # Exportador de métricas do host (CPU, memoria, disco, sistema de ficheiros)
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: mon_node_exporter
+    restart: unless-stopped
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro,rslave
+    expose:
+      - "9100"        # accesible SÓ dende a rede monitor-net (sen "ports")
+    networks:
+      - monitor-net
+
 networks:
+  # Rede da aplicación (Nginx <-> PostgreSQL)
   app-net:
+    driver: bridge
+  # Rede dedicada da monitorización (Prometheus <-> exportadores)
+  monitor-net:
     driver: bridge
 
 volumes:
   postgres_data:
+  prometheus_data:
